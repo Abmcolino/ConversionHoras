@@ -1,4 +1,6 @@
 import streamlit as st
+import pandas as pd
+import os
 
 st.set_page_config(
     page_title="Calculadora de Horas",
@@ -6,10 +8,40 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("⏱️ Calculadora de Horas")
-st.markdown("Introduce un **vector separado por comas**.")
+FILE = "historial.csv"
 
-st.info("Valores permitidos: **1, 2, 3, 5, 8**")
+# ---------------------------
+# Cargar historial
+# ---------------------------
+
+if os.path.exists(FILE):
+    historial = pd.read_csv(FILE)
+else:
+    historial = pd.DataFrame(columns=["persona","semana","horas"])
+    historial.to_csv(FILE,index=False)
+
+# ---------------------------
+# Selección de persona
+# ---------------------------
+
+st.sidebar.title("Usuario")
+
+personas = sorted(historial["persona"].dropna().unique())
+
+persona = st.sidebar.selectbox(
+    "¿Quién eres?",
+    options=list(personas) + ["Nueva persona"]
+)
+
+if persona == "Nueva persona":
+    persona = st.sidebar.text_input("Escribe tu nombre")
+
+if persona == "":
+    st.stop()
+
+# ---------------------------
+# Conversión
+# ---------------------------
 
 conversion = {
     1: 2,
@@ -19,44 +51,112 @@ conversion = {
     8: 40
 }
 
-entrada = st.text_input(
-    "Vector de entrada",
-    placeholder="Ejemplo: 1,2,3"
-)
+# ---------------------------
+# Pestañas
+# ---------------------------
 
-if st.button("Calcular horas", use_container_width=True):
+tab1, tab2 = st.tabs(["Calculadora", "Historial"])
 
-    try:
-        vector = [int(x.strip()) for x in entrada.split(",")]
+# =================================================
+# CALCULADORA
+# =================================================
 
-        for n in vector:
-            if n not in conversion:
-                st.error("❌ Solo se permiten los valores: 1, 2, 3, 5, 8")
-                st.stop()
+with tab1:
 
-        vector_convertido = [conversion[n] for n in vector]
-        resultado = sum(vector_convertido)
+    st.title("⏱️ Calculadora de Horas")
 
-        st.divider()
+    entrada = st.text_input(
+        "Vector de entrada (separado por comas)",
+        placeholder="Ejemplo: 1,2,3"
+    )
 
-        col1, col2 = st.columns(2)
+    if st.button("Calcular horas"):
 
-        with col1:
-            st.subheader("Vector original")
-            st.success(vector)
+        try:
+            vector = [int(x.strip()) for x in entrada.split(",")]
 
-        with col2:
-            st.subheader("Horas convertidas")
-            st.success(vector_convertido)
+            for n in vector:
+                if n not in conversion:
+                    st.error("Solo se permiten: 1,2,3,5,8")
+                    st.stop()
 
-        st.divider()
+            vector_convertido = [conversion[n] for n in vector]
+            resultado = sum(vector_convertido)
 
-        st.subheader("Total acumulado")
+            col1, col2 = st.columns(2)
 
-        st.metric(
-            label="Horas totales",
-            value=f"{resultado} h"
-        )
+            col1.subheader("Vector original")
+            col1.success(vector)
 
-    except:
-        st.error("⚠️ Introduce números separados por comas (ej: 1,2,3)")
+            col2.subheader("Horas convertidas")
+            col2.success(vector_convertido)
+
+            st.metric("Horas totales", f"{resultado} h")
+
+        except:
+            st.error("Introduce números separados por comas")
+
+# =================================================
+# HISTORIAL
+# =================================================
+
+with tab2:
+
+    st.title(f"📅 Historial de {persona}")
+
+    semanas = [
+        "9 de marzo",
+        "16 de marzo",
+        "23 de marzo",
+        "30 de marzo"
+    ]
+
+    semana = st.selectbox("Semana", semanas)
+
+    horas = st.number_input(
+        "Horas trabajadas",
+        min_value=0,
+        max_value=100,
+        step=1
+    )
+
+    if st.button("Guardar horas"):
+
+        if horas > 40:
+            st.warning("⚠️ No puedes superar las 40 horas por semana")
+
+        else:
+
+            fila = (historial["persona"] == persona) & (historial["semana"] == semana)
+
+            if fila.any():
+                historial.loc[fila, "horas"] = horas
+            else:
+                nueva = pd.DataFrame({
+                    "persona":[persona],
+                    "semana":[semana],
+                    "horas":[horas]
+                })
+
+                historial = pd.concat([historial, nueva], ignore_index=True)
+
+            historial.to_csv(FILE,index=False)
+
+            st.success("Horas guardadas")
+
+    st.divider()
+
+    datos_persona = historial[historial["persona"] == persona].copy()
+
+    if not datos_persona.empty:
+
+        datos_persona["horas_libres"] = 40 - datos_persona["horas"]
+
+        st.subheader("Resumen semanal")
+
+        st.dataframe(datos_persona)
+
+    else:
+
+        st.info("Aún no tienes horas registradas.")
+
